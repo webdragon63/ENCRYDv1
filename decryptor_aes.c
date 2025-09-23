@@ -2,65 +2,66 @@
 #include <stdlib.h>
 #include <string.h>
 #include <openssl/evp.h>
-#include <openssl/rand.h>
+#include <openssl/err.h>
 
 #define SALT_SIZE 16
 #define IV_SIZE 16
 #define KEY_SIZE 32
+#define BUFFER_SIZE 4096
 
-void handleErrors(const char *msg) {
-    perror(msg);
-    exit(EXIT_FAILURE);
+void handleErrors() {
+    ERR_print_errors_fp(stderr);
+    abort();
+}
+
+void derive_key(const char *password, unsigned char *salt, unsigned char *key) {
+    if (!PKCS5_PBKDF2_HMAC(password, strlen(password), salt, SALT_SIZE, 10000, EVP_sha256(), KEY_SIZE, key))
+        handleErrors();
 }
 
 int main(int argc, char *argv[]) {
-    if (argc != 2) {
-        printf("Usage: %s <encrypted_file>\n", argv[0]);
-        exit(EXIT_FAILURE);
+    if (argc != 3) {
+        printf("Usage: %s <input.bin> <output.txt>\n", argv[0]);
+        return 1;
     }
-
-    const char *filename = argv[1];
-    FILE *fp = fopen(filename, "rb");
-    if (!fp) handleErrors("File open failed");
-
-    unsigned char salt[SALT_SIZE], iv[IV_SIZE];
-    fread(salt, 1, SALT_SIZE, fp);
-    fread(iv, 1, IV_SIZE, fp);
 
     char password[256];
     printf("Enter password: ");
     scanf("%255s", password);
 
-    unsigned char key[KEY_SIZE];
-    if (!PKCS5_PBKDF2_HMAC(password, strlen(password), salt, SALT_SIZE, 10000, EVP_sha256(), KEY_SIZE, key))
-        handleErrors("Key derivation failed");
+    FILE *fin = fopen(argv[1], "rb");
+    FILE *fout = fopen(argv[2], "wb");
+    if (!fin || !fout) {
+        perror("File error");
+        return 1;
+    }
+
+    unsigned char salt[SALT_SIZE], iv[IV_SIZE], key[KEY_SIZE];
+    fread(salt, 1, SALT_SIZE, fin);
+    fread(iv, 1, IV_SIZE, fin);
+
+    derive_key(password, salt, key);
 
     EVP_CIPHER_CTX *ctx = EVP_CIPHER_CTX_new();
     EVP_DecryptInit_ex(ctx, EVP_aes_256_cbc(), NULL, key, iv);
 
-    unsigned char buffer[1024], plaintext[1024 + EVP_MAX_BLOCK_LENGTH];
-    int len, plaintext_len = 0;
+    unsigned char inbuf[BUFFER_SIZE], outbuf[BUFFER_SIZE + EVP_MAX_BLOCK_LENGTH];
+    int inlen, outlen;
 
-    while ((len = fread(buffer, 1, sizeof(buffer), fp)) > 0) {
-        int out_len;
-        if (!EVP_DecryptUpdate(ctx, plaintext, &out_len, buffer, len))
-            handleErrors("Decrypt failed");
-
-        fwrite(plaintext, 1, out_len, stdout);
-        plaintext_len += out_len;
+    while ((inlen = fread(inbuf, 1, BUFFER_SIZE, fin)) > 0) {
+        if (!EVP_DecryptUpdate(ctx, outbuf, &outlen, inbuf, inlen))
+            handleErrors();
+        fwrite(outbuf, 1, outlen, fout);
     }
 
-    if (!EVP_DecryptFinal_ex(ctx, plaintext, &len))
-        handleErrors("Wrong Password or Data Corrupted");
-
-    fwrite(plaintext, 1, len, stdout);
-    plaintext_len += len;
-
-    printf("\n");
+    if (!EVP_DecryptFinal_ex(ctx, outbuf, &outlen))
+        handleErrors();
+    fwrite(outbuf, 1, outlen, fout);
 
     EVP_CIPHER_CTX_free(ctx);
-    fclose(fp);
+    fclose(fin);
+    fclose(fout);
 
+    printf("Decryption completed!\n");
     return 0;
 }
-
