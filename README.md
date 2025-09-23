@@ -35,7 +35,7 @@
 - [PyQt5](https://pypi.org/project/PyQt5/)
 - C binaries: `encryptor`, `decryptor` (compile with included `Makefile`)
 - Fira Mono or Consolas font (recommended for best appearance)
-- OS: Windows/Linux/Mac (cross-platform)
+- OS: Linux
 
 ---
 
