@@ -24,10 +24,9 @@
 ---
 
 ## Screenshots
-
-> ![ENCRYD_v1 Screenshot](screenshot.png)  
+  
+<img width="1242" height="935" alt="Screenshot at 2025-09-23 16-36-20" src="https://github.com/user-attachments/assets/f65c6c4a-5190-4855-a8b0-2ca3386bf301" />
 > *(Add your own screenshot here to showcase the UI!)*
-
 ---
 
 ## Requirements
