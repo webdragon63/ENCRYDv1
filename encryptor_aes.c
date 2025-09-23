@@ -3,66 +3,69 @@
 #include <string.h>
 #include <openssl/evp.h>
 #include <openssl/rand.h>
+#include <openssl/err.h>
 
 #define SALT_SIZE 16
 #define IV_SIZE 16
 #define KEY_SIZE 32
+#define BUFFER_SIZE 4096
 
-void handleErrors(const char *msg) {
-    perror(msg);
-    exit(EXIT_FAILURE);
+void handleErrors() {
+    ERR_print_errors_fp(stderr);
+    abort();
 }
 
-int main() {
-    unsigned char salt[SALT_SIZE];
-    unsigned char iv[IV_SIZE];
-    unsigned char key[KEY_SIZE];
+void derive_key(const char *password, unsigned char *salt, unsigned char *key) {
+    if (!PKCS5_PBKDF2_HMAC(password, strlen(password), salt, SALT_SIZE, 10000, EVP_sha256(), KEY_SIZE, key))
+        handleErrors();
+}
 
-    if (!RAND_bytes(salt, sizeof(salt)) || !RAND_bytes(iv, sizeof(iv)))
-        handleErrors("Random generation failed");
+int main(int argc, char *argv[]) {
+    if (argc != 3) {
+        printf("Usage: %s <input.txt> <output.bin>\n", argv[0]);
+        return 1;
+    }
 
     char password[256];
-    char plaintext[1024];
-
-    printf("Enter message to encrypt: ");
-    fgets(plaintext, sizeof(plaintext), stdin);
-    plaintext[strcspn(plaintext, "\n")] = 0;
-
     printf("Enter password: ");
     scanf("%255s", password);
 
-    if (!PKCS5_PBKDF2_HMAC(password, strlen(password), salt, SALT_SIZE, 10000, EVP_sha256(), KEY_SIZE, key))
-        handleErrors("Key derivation failed");
+    FILE *fin = fopen(argv[1], "rb");
+    FILE *fout = fopen(argv[2], "wb");
+    if (!fin || !fout) {
+        perror("File error");
+        return 1;
+    }
 
-    FILE *fp = fopen("encrypted.bin", "wb");
-    if (!fp) handleErrors("File open failed");
+    unsigned char salt[SALT_SIZE], iv[IV_SIZE], key[KEY_SIZE];
+    RAND_bytes(salt, sizeof(salt));
+    RAND_bytes(iv, sizeof(iv));
 
-    fwrite(salt, 1, SALT_SIZE, fp);
-    fwrite(iv, 1, IV_SIZE, fp);
+    derive_key(password, salt, key);
+
+    fwrite(salt, 1, SALT_SIZE, fout);
+    fwrite(iv, 1, IV_SIZE, fout);
 
     EVP_CIPHER_CTX *ctx = EVP_CIPHER_CTX_new();
     EVP_EncryptInit_ex(ctx, EVP_aes_256_cbc(), NULL, key, iv);
 
-    unsigned char ciphertext[1024 + EVP_MAX_BLOCK_LENGTH];
-    int len, ciphertext_len = 0;
+    unsigned char inbuf[BUFFER_SIZE], outbuf[BUFFER_SIZE + EVP_MAX_BLOCK_LENGTH];
+    int inlen, outlen;
 
-    if (!EVP_EncryptUpdate(ctx, ciphertext, &len, (unsigned char *)plaintext, strlen(plaintext)))
-        handleErrors("Encryption failed");
+    while ((inlen = fread(inbuf, 1, BUFFER_SIZE, fin)) > 0) {
+        if (!EVP_EncryptUpdate(ctx, outbuf, &outlen, inbuf, inlen))
+            handleErrors();
+        fwrite(outbuf, 1, outlen, fout);
+    }
 
-    fwrite(ciphertext, 1, len, fp);
-    ciphertext_len += len;
-
-    if (!EVP_EncryptFinal_ex(ctx, ciphertext, &len))
-        handleErrors("Final encryption failed");
-
-    fwrite(ciphertext, 1, len, fp);
-    ciphertext_len += len;
+    if (!EVP_EncryptFinal_ex(ctx, outbuf, &outlen))
+        handleErrors();
+    fwrite(outbuf, 1, outlen, fout);
 
     EVP_CIPHER_CTX_free(ctx);
-    fclose(fp);
+    fclose(fin);
+    fclose(fout);
 
-    printf("Message Encrypted and saved to encrypted.bin\n");
-
+    printf("Encryption completed!\n");
     return 0;
 }
-
