@@ -52,11 +52,7 @@
 2. **Build C Binaries:**
 
    Place your C source files and `Makefile` in the project directory.  
-   Click **🛠 Build C Binaries** in the dashboard, or run:
-
-   ```bash
-   make
-   ```
+   Click **🛠 Build C Binaries** in the dashboard.
 
    Binaries will be placed in the `output` subdirectory.
 
