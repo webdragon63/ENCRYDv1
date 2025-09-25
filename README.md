@@ -104,7 +104,3 @@
 Made By **WebDragon63**
   
 ---
-
-## License
-
-MIT
